@@ -41,14 +41,14 @@ jobs:
       - name: Package
         run: |
           target=${{ matrix.target }}
-          name="vume-${target%-unknown-linux-gnu}"
-          cp "target/$target/release/vume" "$name"
+          arch="${target%%-*}"
+          cp "target/$target/release/vume" "vume-${arch}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: vume-${{ matrix.target }}
-          path: "vume-${{ matrix.target %-unknown-linux-gnu }}"
+          path: "vume-*"
 
   release:
     name: Create Release
