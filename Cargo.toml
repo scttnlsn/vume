@@ -1,6 +1,6 @@
 [package]
 name = "vume"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Firecracker micro-VM pool manager"
 license = "MIT"
