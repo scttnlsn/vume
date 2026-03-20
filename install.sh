@@ -48,14 +48,14 @@ detect_arch() {
 
 prompt_install_path() {
     echo -n "Installation path [/opt/vume]: "
-    read -r path
+    read -r path < /dev/tty
     INSTALL_PATH="${path:-/opt/vume}"
 }
 
 prompt_pool_device() {
     local default_pool="$VUME_HOME/vume.zfs"
     echo -n "ZFS pool device (leave empty for file-backed dev mode) [${default_pool}]: "
-    read -r device
+    read -r device < /dev/tty
     if [[ -n "$device" ]]; then
         POOL_DEVICE="$device"
     else
