@@ -8,6 +8,7 @@ set -euo pipefail
 #   ./scripts/release.sh 0.2.0    # bump to specified version first
 
 CARGO_TOML="Cargo.toml"
+CARGO_LOCK="Cargo.lock"
 
 # --- helpers ---
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -37,7 +38,7 @@ if [ "${1:-}" != "" ]; then
   echo "Bumping version to $NEW_VERSION ..."
   sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$CARGO_TOML"
   cargo check --quiet  # validate Cargo.toml after edit
-  git add "$CARGO_TOML"
+  git add "$CARGO_TOML" "$CARGO_LOCK"
   git commit -m "v$NEW_VERSION"
 fi
 
