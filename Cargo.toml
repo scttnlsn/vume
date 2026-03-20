@@ -6,7 +6,7 @@ description = "Firecracker micro-VM pool manager"
 license = "MIT"
 repository = "https://github.com/scttnlsn/vume"
 readme = "README.md"
-exclude = ["tests/", "config/", "Makefile", "install.sh", "vume.sh"]
+exclude = ["tests/", "config/", "scripts/", "Makefile", "install.sh", "vume.sh"]
 
 [dependencies]
 anyhow = "1"
