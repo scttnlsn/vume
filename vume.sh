@@ -236,7 +236,7 @@ cmd_rootfs() {
     mount -o loop "$ROOTFS_PATH" "$MOUNT_DIR"
 
     echo ":: running debootstrap (bookworm)"
-    debootstrap bookworm "$MOUNT_DIR" http://deb.debian.org/debian
+    debootstrap bookworm "$MOUNT_DIR" http://deb.debian.org/debian > /dev/null 2>&1
 
     echo ":: configuring system"
     echo "vume" > "${MOUNT_DIR}/etc/hostname"
@@ -250,8 +250,8 @@ EOF
 
     echo ":: installing packages"
     chroot "$MOUNT_DIR" /bin/bash -c "
-        apt-get update > /dev/null
-        apt-get install -y openssh-server > /dev/null
+        apt-get update > /dev/null 2>&1
+        apt-get install -y openssh-server > /dev/null 2>&1
         ssh-keygen -A
         systemctl enable ssh
     "
