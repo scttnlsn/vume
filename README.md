@@ -109,7 +109,7 @@ sudo vume exec my-vm "apt install -y python3" --timeout 120
 ### Manage background processes
 
 ```bash
-sudo vume process start my-vm my-server "python3 -m http.worker"
+sudo vume process start my-vm my-server "python3 -m http.server"
 sudo vume process stop my-vm my-server
 sudo vume process list my-vm
 sudo vume process logs my-vm my-server --lines 100
