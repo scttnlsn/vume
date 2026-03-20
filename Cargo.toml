@@ -1,0 +1,23 @@
+[package]
+name = "vume"
+version = "0.1.0"
+edition = "2021"
+description = "Firecracker micro-VM pool manager"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.11"
+log = "0.4"
+nix = { version = "0.29", features = ["signal"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json"] }
+rusqlite = { version = "0.35", features = ["bundled"] }
+serde_json = "1"
+ssh2 = "0.9"
+time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
+uuid = { version = "1", features = ["v4"] }
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

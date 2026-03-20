@@ -1,0 +1,311 @@
+use std::io::{self, Write};
+
+use anyhow::bail;
+use clap::{Parser, Subcommand};
+
+use vume::network::NetworkManager;
+use vume::ssh::run_in_vm;
+use vume::state::{StateManager, VmStatus};
+use vume::vm::VM;
+
+#[derive(Parser)]
+#[command(name = "vume", about = "Vume VM manager")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start a VM. If --id matches a stopped VM then resume it.
+    Start {
+        /// Path to kernel image
+        #[arg(long, default_value = "vume/vmlinux")]
+        kernel: String,
+
+        /// Host interface for VM outbound traffic (default: auto-detect)
+        #[arg(long)]
+        outbound_if: Option<String>,
+
+        /// VM identifier (default: auto-generated)
+        #[arg(long)]
+        id: Option<String>,
+    },
+
+    /// Stop a running VM
+    Stop {
+        /// VM ID
+        id: String,
+    },
+
+    /// Execute a command in a running VM
+    Exec {
+        /// VM ID
+        id: String,
+
+        /// Command to execute
+        command: String,
+
+        /// Command timeout in seconds
+        #[arg(long, default_value = "30")]
+        timeout: u64,
+
+        /// Skip waiting for SSH to be ready
+        #[arg(long)]
+        no_wait: bool,
+    },
+
+    /// Manage background processes in a VM
+    Process {
+        #[command(subcommand)]
+        command: ProcessCommands,
+    },
+
+    /// Stop and remove a VM
+    Destroy {
+        /// VM ID (omit to destroy all)
+        id: Option<String>,
+    },
+
+    /// List VMs
+    List {
+        /// Filter by status
+        #[arg(long, value_parser = ["running", "stopped", "error"])]
+        status: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProcessCommands {
+    /// Start a background process in a VM
+    Start {
+        /// VM ID
+        vm_id: String,
+        /// Process name
+        name: String,
+        /// Command to run
+        command: String,
+        /// Working directory
+        #[arg(long, default_value = "/workspace")]
+        cwd: String,
+        /// Disable auto-restart on failure
+        #[arg(long)]
+        no_restart: bool,
+    },
+
+    /// Stop and remove a background process
+    Stop {
+        /// VM ID
+        vm_id: String,
+        /// Process name
+        name: String,
+    },
+
+    /// List background processes in a VM
+    List {
+        /// VM ID
+        vm_id: String,
+    },
+
+    /// View logs for a background process
+    Logs {
+        /// VM ID
+        vm_id: String,
+        /// Process name
+        name: String,
+        /// Number of lines to show
+        #[arg(short, long, default_value = "50")]
+        lines: u32,
+    },
+}
+
+fn main() {
+    env_logger::init();
+
+    if let Err(e) = run(Cli::parse()) {
+        eprintln!("{e:#}");
+        std::process::exit(1);
+    }
+}
+
+fn run(cli: Cli) -> anyhow::Result<()> {
+    match cli.command {
+        Commands::Start {
+            kernel,
+            outbound_if,
+            id,
+        } => {
+            let mut vm = VM::new(&kernel, outbound_if.as_deref(), id.as_deref())?;
+            let info = vm.start()?;
+            println!("id: {}", info.id);
+            println!("pid: {}", info.pid);
+            println!("ip: {}", info.ip);
+            println!("status: {}", info.status);
+        }
+
+        Commands::Stop { id } => {
+            VM::stop(&id)?;
+        }
+
+        Commands::Exec {
+            id,
+            command,
+            timeout,
+            no_wait,
+        } => {
+            let result = run_in_vm(&id, &[&command], !no_wait, timeout)?;
+            if !result.stdout.is_empty() {
+                print!("{}", result.stdout);
+            }
+            if !result.stderr.is_empty() {
+                eprint!("{}", result.stderr);
+            }
+            std::process::exit(result.exit_code);
+        }
+
+        Commands::Process { command } => {
+            match command {
+                ProcessCommands::Start {
+                    vm_id,
+                    name,
+                    command,
+                    cwd,
+                    no_restart,
+                } => {
+                    let name = sanitize_process_name(&name)?;
+                    let restart_policy = if no_restart { "no" } else { "always" };
+                    let unit = format!(
+                        "[Unit]\n\
+                     Description={name}\n\
+                     \n\
+                     [Service]\n\
+                     Type=simple\n\
+                     WorkingDirectory={cwd}\n\
+                     ExecStart={command}\n\
+                     Restart={restart_policy}\n\
+                     RestartSec=2\n\
+                     \n\
+                     [Install]\n\
+                     WantedBy=multi-user.target\n"
+                    );
+
+                    run_in_vm(
+                        &vm_id,
+                        &[
+                            &format!("cat > /etc/systemd/system/vume-{name}.service << 'UNIT'\n{unit}UNIT"),
+                            "systemctl daemon-reload",
+                            &format!("systemctl enable --now vume-{name}.service"),
+                        ],
+                        true,
+                        30,
+                    )?;
+                    println!("Started process '{name}' in VM {vm_id}");
+                }
+
+                ProcessCommands::Stop { vm_id, name } => {
+                    let name = sanitize_process_name(&name)?;
+                    run_in_vm(
+                        &vm_id,
+                        &[
+                            &format!("sh -c 'systemctl disable --now vume-{name}.service || true'"),
+                            &format!("rm -f /etc/systemd/system/vume-{name}.service"),
+                            "systemctl daemon-reload",
+                        ],
+                        false,
+                        30,
+                    )?;
+                    println!("Stopped process '{name}' in VM {vm_id}");
+                }
+
+                ProcessCommands::List { vm_id } => {
+                    let result = run_in_vm(
+                        &vm_id,
+                        &["systemctl list-units 'vume-*' --type=service --no-pager --plain --all"],
+                        false,
+                        30,
+                    )?;
+                    if result.stdout.is_empty() {
+                        println!("No managed processes found");
+                    } else {
+                        println!("{}", result.stdout);
+                    }
+                }
+
+                ProcessCommands::Logs { vm_id, name, lines } => {
+                    let cmd = format!("journalctl -u vume-{name} -n {lines} --no-pager");
+                    let result = run_in_vm(&vm_id, &[&cmd], false, 30)?;
+                    if !result.stdout.is_empty() {
+                        print!("{}", result.stdout);
+                    }
+                }
+            }
+        }
+
+        Commands::Destroy { id } => match id {
+            Some(id) => VM::destroy(&id)?,
+            None => {
+                print!("This will destroy all VMs.  Are you sure? (y/n)\n> ");
+                io::stdout().flush()?;
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)?;
+                if input.trim().eq_ignore_ascii_case("y") {
+                    let state = StateManager::new()?;
+                    let vms = state.list_vms(None)?;
+                    for vm in vms {
+                        VM::destroy(&vm.id)?;
+                    }
+                }
+            }
+        },
+
+        Commands::List { status } => {
+            let state = StateManager::new()?;
+            let stale = state.refresh_status()?;
+            for item in &stale {
+                NetworkManager::delete_tap(&item.tap);
+            }
+
+            let filter = status.map(|s| s.parse::<VmStatus>()).transpose()?;
+            let vms = state.list_vms(filter)?;
+            if vms.is_empty() {
+                println!("No VMs found.");
+                return Ok(());
+            }
+
+            println!(
+                "{:<12} {:<10} {:<16} {:<8} CREATED",
+                "ID", "STATUS", "IP", "PID"
+            );
+            println!("{}", "-".repeat(70));
+            for vm in &vms {
+                let created = vm
+                    .created_at
+                    .get(..19)
+                    .unwrap_or(&vm.created_at)
+                    .replace('T', " ");
+                println!(
+                    "{:<12} {:<10} {:<16} {:<8} {created}",
+                    vm.id, vm.status, vm.ip, vm.pid,
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn sanitize_process_name(name: &str) -> anyhow::Result<&str> {
+    if name.is_empty() {
+        bail!("Process name cannot be empty");
+    }
+    if name.starts_with(|c: char| c.is_ascii_digit()) {
+        bail!("Process name cannot start with a digit");
+    }
+    if name
+        .chars()
+        .any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+    {
+        bail!("Process name can only contain alphanumeric characters, dashes, and underscores");
+    }
+    Ok(name)
+}
