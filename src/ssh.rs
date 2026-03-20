@@ -1,6 +1,5 @@
 use std::io::Read;
 use std::net::TcpStream;
-use std::path::Path;
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -8,6 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use ssh2::Session;
 
+use crate::config::get;
 use crate::state::{StateManager, VmStatus};
 
 #[derive(Debug)]
@@ -34,7 +34,7 @@ impl SSHClient {
         session.handshake().context("SSH handshake failed")?;
 
         session
-            .userauth_pubkey_file("root", None, Path::new("vume/vume_key"), None)
+            .userauth_pubkey_file("root", None, &get().ssh_key, None)
             .context("SSH key authentication failed")?;
 
         Ok(Self { session })

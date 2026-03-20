@@ -3,6 +3,10 @@ name = "vume"
 version = "0.1.0"
 edition = "2021"
 description = "Firecracker micro-VM pool manager"
+license = "MIT"
+repository = "https://github.com/scttnlsn/vume"
+readme = "README.md"
+exclude = ["tests/", "config/", "Makefile", "install.sh", "vume.sh"]
 
 [dependencies]
 anyhow = "1"
@@ -12,9 +16,11 @@ log = "0.4"
 nix = { version = "0.29", features = ["signal"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json"] }
 rusqlite = { version = "0.35", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ssh2 = "0.9"
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "macros"] }
+toml = "0.8"
 uuid = { version = "1", features = ["v4"] }
 
 [profile.release]

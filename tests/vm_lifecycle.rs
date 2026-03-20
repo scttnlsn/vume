@@ -2,14 +2,22 @@
 //!
 //! Requires root (sudo) for networking and Firecracker.
 
+use vume::config;
 use vume::ssh::wait_for_ready;
 use vume::state::{StateManager, VmStatus};
 use vume::vm::VM;
 
+fn init_config() {
+    let cfg = config::Config::load().expect("failed to load config");
+    config::init(cfg);
+}
+
 #[test]
 fn test_vm_lifecycle() {
+    init_config();
+
     // Create and start a new VM
-    let mut vm = VM::new("vume/vmlinux", None, None).expect("failed to create VM");
+    let mut vm = VM::new(None).expect("failed to create VM");
     let vm_id = vm.id().to_string();
 
     let info = vm.start().expect("failed to start VM");
@@ -32,7 +40,7 @@ fn test_vm_lifecycle() {
     }
 
     // Resume the stopped VM
-    let mut resumed = VM::new("vume/vmlinux", None, Some(&vm_id)).expect("failed to create resumed VM");
+    let mut resumed = VM::new(Some(&vm_id)).expect("failed to create resumed VM");
     let info = resumed.start().expect("failed to resume VM");
     assert_eq!(info.status, VmStatus::Running);
 

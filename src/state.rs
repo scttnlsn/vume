@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fmt;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::{bail, Context, Result};
@@ -10,17 +10,7 @@ use nix::unistd::Pid;
 use rusqlite::Connection;
 use time::OffsetDateTime;
 
-const SUBNET_PREFIX: &str = "172.16.0";
-const IP_RANGE_START: u8 = 2;
-const IP_RANGE_END: u8 = 254;
-
-pub fn vms_dir() -> PathBuf {
-    PathBuf::from("vume/vms")
-}
-
-fn db_path() -> PathBuf {
-    vms_dir().join("vume.db")
-}
+use crate::config::get;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmStatus {
@@ -103,7 +93,7 @@ pub struct StateManager {
 
 impl StateManager {
     pub fn new() -> Result<Self> {
-        Self::with_path(&db_path())
+        Self::with_path(&get().db_path())
     }
 
     pub fn with_path(path: &Path) -> Result<Self> {
@@ -258,13 +248,10 @@ fn allocate_ip(conn: &Connection) -> Result<String> {
         .query_map([], |row| row.get(0))?
         .collect::<rusqlite::Result<_>>()?;
 
-    for i in IP_RANGE_START..=IP_RANGE_END {
-        let candidate = format!("{SUBNET_PREFIX}.{i}");
-        if !used.contains(&candidate) {
-            return Ok(candidate);
-        }
-    }
-    bail!("No available IPs in pool")
+    get()
+        .network
+        .allocate_ip(&used.into_iter().collect::<Vec<_>>())
+        .ok_or_else(|| anyhow::anyhow!("No available IPs in pool"))
 }
 
 fn pid_alive(pid: u32) -> bool {

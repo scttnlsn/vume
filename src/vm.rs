@@ -10,15 +10,15 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use uuid::Uuid;
 
+use crate::config::get;
 use crate::firecracker::Firecracker;
 use crate::network::NetworkManager;
-use crate::state::{vms_dir, StateManager, VMInfo, VmStatus};
+use crate::state::{StateManager, VMInfo, VmStatus};
 
 #[derive(Debug)]
 pub struct VM {
     id: String,
     kernel: PathBuf,
-    outbound_if: Option<String>,
     vm_dir: PathBuf,
     rootfs: PathBuf,
     socket: PathBuf,
@@ -35,24 +35,25 @@ impl VM {
         &self.id
     }
 
-    pub fn new(kernel: &str, outbound_if: Option<&str>, vm_id: Option<&str>) -> Result<Self> {
+    pub fn new(vm_id: Option<&str>) -> Result<Self> {
+        let cfg = get();
         let id = vm_id.map_or_else(
             || Uuid::new_v4().simple().to_string()[..8].to_string(),
             str::to_string,
         );
 
-        let kernel =
-            fs::canonicalize(kernel).with_context(|| format!("Kernel not found at {kernel}"))?;
+        let kernel = fs::canonicalize(&cfg.kernel)
+            .with_context(|| format!("Kernel not found at {}", cfg.kernel.display()))?;
 
-        let vm_dir = vms_dir().join(&id);
+        let vm_dir = cfg.vms_dir().join(&id);
         let socket = vm_dir.join("firecracker.sock");
+        let rootfs = PathBuf::from(cfg.zvol_path(&id));
 
         Ok(Self {
-            rootfs: PathBuf::from(format!("/dev/zvol/vume/{id}")),
             id,
             kernel,
-            outbound_if: outbound_if.map(str::to_string),
             vm_dir,
+            rootfs,
             socket,
             ip: None,
             tap: None,
@@ -74,6 +75,7 @@ impl VM {
     }
 
     fn do_start(&mut self, state: &StateManager) -> Result<VMInfo> {
+        let cfg = get();
         let tap = format!("tap-{}", self.id);
         self.tap = Some(tap.clone());
 
@@ -97,14 +99,14 @@ impl VM {
             fs::create_dir_all(&self.vm_dir)?;
 
             let snapshot = resolve_rootfs_snapshot()?;
-            run_zfs(&["clone", &snapshot, &format!("vume/{}", self.id)])?;
+            run_zfs(&["clone", &snapshot, &cfg.zfs_dataset(&self.id)])?;
 
             state.reserve_vm(&self.id, &tap)?
         };
 
         // Setup networking
         self.ip = Some(info.ip.clone());
-        NetworkManager::ensure_bridge(self.outbound_if.as_deref())?;
+        NetworkManager::ensure_bridge(cfg.network.outbound_if.as_deref())?;
         NetworkManager::create_tap(&tap)?;
 
         // Start Firecracker
@@ -153,8 +155,16 @@ impl VM {
 }
 
 fn resolve_rootfs_snapshot() -> Result<String> {
+    let pool = &get().zfs_pool;
     let output = Command::new("zfs")
-        .args(["get", "-H", "-o", "value", "vume:latest", "vume/rootfs"])
+        .args([
+            "get",
+            "-H",
+            "-o",
+            "value",
+            "vume:latest",
+            &format!("{}/rootfs", pool),
+        ])
         .output()
         .context("Failed to run zfs get")?;
 
@@ -164,15 +174,16 @@ fn resolve_rootfs_snapshot() -> Result<String> {
 
     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if version.is_empty() || version == "-" {
-        bail!("vume:latest property not set on vume/rootfs");
+        bail!("vume:latest property not set on {}/rootfs", pool);
     }
-    Ok(format!("vume/rootfs@{version}"))
+    Ok(format!("{}/rootfs@{}", pool, version))
 }
 
 /// Remove a VM's filesystem, ZFS dataset, and state record.
 /// Attempts all steps even if individual ones fail, returning the first error.
 fn cleanup_vm(vm_id: &str, state: &StateManager) -> Result<()> {
-    let vm_dir = vms_dir().join(vm_id);
+    let cfg = get();
+    let vm_dir = cfg.vms_dir().join(vm_id);
     let mut errors = Vec::new();
 
     if vm_dir.exists() {
@@ -180,7 +191,7 @@ fn cleanup_vm(vm_id: &str, state: &StateManager) -> Result<()> {
             errors.push(anyhow::Error::from(e));
         }
     }
-    if let Err(e) = run_zfs(&["destroy", "-r", &format!("vume/{vm_id}")]) {
+    if let Err(e) = run_zfs(&["destroy", "-r", &cfg.zfs_dataset(vm_id)]) {
         errors.push(e);
     }
     if let Err(e) = state.delete_vm(vm_id) {

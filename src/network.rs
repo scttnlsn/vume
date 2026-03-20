@@ -4,46 +4,43 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 use log::{info, warn};
 
-pub const BRIDGE: &str = "br0";
-pub const BRIDGE_IP: &str = "172.16.0.1";
-const BRIDGE_SUBNET: &str = "172.16.0.0/24";
-const BRIDGE_PREFIXLEN: u8 = 24;
+use crate::config::get;
 
 pub struct NetworkManager;
 
 impl NetworkManager {
     pub fn ensure_bridge(outbound_if: Option<&str>) -> Result<()> {
-        if bridge_exists() {
+        let cfg = get();
+        let bridge = &cfg.network.bridge;
+        let bridge_ip = cfg.network.bridge_ip();
+        let subnet = &cfg.network.subnet;
+
+        if bridge_exists(bridge) {
             return Ok(());
         }
 
-        info!("Creating bridge {BRIDGE} ({BRIDGE_IP}/{BRIDGE_PREFIXLEN})...");
+        info!("Creating bridge {bridge} ({bridge_ip}/24)...");
 
-        run("ip", &["link", "add", BRIDGE, "type", "bridge"])?;
+        run("ip", &["link", "add", bridge, "type", "bridge"])?;
         run(
             "ip",
-            &[
-                "addr",
-                "add",
-                &format!("{BRIDGE_IP}/{BRIDGE_PREFIXLEN}"),
-                "dev",
-                BRIDGE,
-            ],
+            &["addr", "add", &format!("{bridge_ip}/24"), "dev", bridge],
         )?;
-        run("ip", &["link", "set", BRIDGE, "up"])?;
+        run("ip", &["link", "set", bridge, "up"])?;
 
         fs::write("/proc/sys/net/ipv4/ip_forward", "1\n")?;
 
         let outbound = outbound_if
             .map(str::to_string)
             .unwrap_or_else(detect_default_interface);
-        setup_nat(&outbound)
+        setup_nat(bridge, subnet, &outbound)
     }
 
     pub fn create_tap(tap_name: &str) -> Result<()> {
+        let bridge = &get().network.bridge;
         info!("Creating tap device {tap_name}...");
         run("ip", &["tuntap", "add", "dev", tap_name, "mode", "tap"])?;
-        run("ip", &["link", "set", tap_name, "master", BRIDGE])?;
+        run("ip", &["link", "set", tap_name, "master", bridge])?;
         run("ip", &["link", "set", tap_name, "up"])
     }
 
@@ -56,16 +53,17 @@ impl NetworkManager {
     }
 }
 
-fn setup_nat(outbound_if: &str) -> Result<()> {
+fn setup_nat(bridge: &str, subnet: &str, outbound_if: &str) -> Result<()> {
+    let bridge_subnet = format!("{}.0/24", subnet);
     iptables_ensure(
         Some("nat"),
         "POSTROUTING",
-        &["-s", BRIDGE_SUBNET, "-o", outbound_if, "-j", "MASQUERADE"],
+        &["-s", &bridge_subnet, "-o", outbound_if, "-j", "MASQUERADE"],
     )?;
     iptables_ensure(
         None,
         "FORWARD",
-        &["-i", BRIDGE, "-o", outbound_if, "-j", "ACCEPT"],
+        &["-i", bridge, "-o", outbound_if, "-j", "ACCEPT"],
     )?;
     iptables_ensure(
         None,
@@ -74,7 +72,7 @@ fn setup_nat(outbound_if: &str) -> Result<()> {
             "-i",
             outbound_if,
             "-o",
-            BRIDGE,
+            bridge,
             "-m",
             "state",
             "--state",
@@ -115,9 +113,9 @@ fn iptables_ensure(table: Option<&str>, chain: &str, args: &[&str]) -> Result<()
     Ok(())
 }
 
-fn bridge_exists() -> bool {
+fn bridge_exists(bridge: &str) -> bool {
     Command::new("ip")
-        .args(["link", "show", BRIDGE])
+        .args(["link", "show", bridge])
         .output()
         .is_ok_and(|o| o.status.success())
 }

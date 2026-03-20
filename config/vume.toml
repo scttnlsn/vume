@@ -1,0 +1,40 @@
+# vume configuration
+# All fields are optional. Defaults are shown in comments.
+
+# Path to the Linux kernel image
+# Default: <VUME_HOME>/vmlinux
+# kernel = "/opt/vume/vmlinux"
+
+# Path to the Firecracker binary
+# Default: <VUME_HOME>/firecracker
+# firecracker = "/opt/vume/firecracker"
+
+# Path to the SSH private key
+# Default: <VUME_HOME>/vume_key
+# ssh_key = "/opt/vume/vume_key"
+
+# ZFS pool name
+# Default: vume
+# zfs_pool = "vume"
+
+# Default vCPUs per VM
+# Default: 2
+# vcpu = 2
+
+# Default memory per VM in MiB
+# Default: 1024
+# mem = 1024
+
+[network]
+# Bridge interface name
+# Default: br0
+# bridge = "br0"
+
+# First three octets of the /24 subnet for VMs
+# Bridge gets .1, VMs get .2-.254
+# Default: 172.16.0
+# subnet = "172.16.0"
+
+# Host interface for outbound NAT
+# Auto-detected if omitted
+# outbound_if = "eth0"

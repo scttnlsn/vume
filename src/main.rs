@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use anyhow::bail;
 use clap::{Parser, Subcommand};
 
+use vume::config;
 use vume::network::NetworkManager;
 use vume::ssh::run_in_vm;
 use vume::state::{StateManager, VmStatus};
@@ -19,14 +20,6 @@ struct Cli {
 enum Commands {
     /// Start a VM. If --id matches a stopped VM then resume it.
     Start {
-        /// Path to kernel image
-        #[arg(long, default_value = "vume/vmlinux")]
-        kernel: String,
-
-        /// Host interface for VM outbound traffic (default: auto-detect)
-        #[arg(long)]
-        outbound_if: Option<String>,
-
         /// VM identifier (default: auto-generated)
         #[arg(long)]
         id: Option<String>,
@@ -73,6 +66,24 @@ enum Commands {
         #[arg(long, value_parser = ["running", "stopped", "error"])]
         status: Option<String>,
     },
+
+    /// Show or query configuration
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigCommands {
+    /// Get a config value
+    Get {
+        /// Config key (e.g. kernel, firecracker, network.bridge)
+        key: String,
+    },
+
+    /// Print the config file path
+    Path,
 }
 
 #[derive(Subcommand)]
@@ -122,6 +133,15 @@ enum ProcessCommands {
 fn main() {
     env_logger::init();
 
+    let cfg = match config::Config::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("failed to load config: {e:#}");
+            std::process::exit(1);
+        }
+    };
+    config::init(cfg);
+
     if let Err(e) = run(Cli::parse()) {
         eprintln!("{e:#}");
         std::process::exit(1);
@@ -130,12 +150,8 @@ fn main() {
 
 fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
-        Commands::Start {
-            kernel,
-            outbound_if,
-            id,
-        } => {
-            let mut vm = VM::new(&kernel, outbound_if.as_deref(), id.as_deref())?;
+        Commands::Start { id } => {
+            let mut vm = VM::new(id.as_deref())?;
             let info = vm.start()?;
             println!("id: {}", info.id);
             println!("pid: {}", info.pid);
@@ -289,6 +305,33 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 );
             }
         }
+
+        Commands::Config { command } => match command {
+            ConfigCommands::Get { key } => {
+                let cfg = config::get();
+                match key.as_str() {
+                    "home" => println!("{}", cfg.home.display()),
+                    "kernel" => println!("{}", cfg.kernel.display()),
+                    "firecracker" => println!("{}", cfg.firecracker.display()),
+                    "ssh_key" => println!("{}", cfg.ssh_key.display()),
+                    "zfs_pool" => println!("{}", cfg.zfs_pool),
+                    "vcpu" => println!("{}", cfg.vcpu),
+                    "mem" => println!("{}", cfg.mem),
+                    "network.bridge" => println!("{}", cfg.network.bridge),
+                    "network.subnet" => println!("{}", cfg.network.subnet),
+                    "network.outbound_if" => {
+                        println!("{}", cfg.network.outbound_if.as_deref().unwrap_or(""));
+                    }
+                    _ => bail!("Unknown config key: {key}"),
+                }
+            }
+            ConfigCommands::Path => {
+                let path = std::env::var("VUME_HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("/opt/vume"));
+                println!("{}", path.join("vume.toml").display());
+            }
+        },
     }
 
     Ok(())

@@ -2,49 +2,64 @@
 
 Micro-VM pool management via [Firecracker](https://github.com/firecracker-microvm/firecracker) and [ZFS](https://github.com/openzfs/zfs)
 
+## Installation
+
+### Quick install
+
+```bash
+curl -s https://raw.githubusercontent.com/scttnlsn/vume/main/install.sh | bash
+```
+
+This will:
+- Download the `vume` binary from the latest GitHub release
+- Download the Firecracker binary and vmlinux kernel
+- Build a Debian rootfs
+- Create a ZFS pool
+- Install everything under `/opt/vume` (default)
+- Symlink `vume` to `/usr/local/bin/vume`
+
+You'll be prompted for:
+- The install path (default: `/opt/vume`)
+- The ZFS pool device (leave empty for file-backed dev mode; a real device/partition is recommended for production)
+
+If you install to a non-default path, set `VUME_HOME` in your shell profile:
+
+```bash
+export VUME_HOME=/your/path
+```
+
+### Development
+
+If you have a local checkout of this repo:
+
+```bash
+./install.sh --instal-path ./vume
+# or with a custom install path:
+./install.sh --install-path ./vume
+# or with a custom ZFS pool device:
+./install.sh --pool-device /dev/sdb
+```
+
+This will build from source via `cargo build --release` instead of downloading the binary.
+
 ## System requirements
 
-* Linux (kernel with KVM support)
-* ZFS (for fast CoW storage and snapshots)
-* iptables (for networking - bridge, NAT, tap devices)
-* debootstrap (for building the rootfs)
-* Firecracker binary
-* `vmlinux` Linux kernel image
+- Linux (kernel with KVM support)
+- ZFS (for fast CoW storage and snapshots)
+- iptables (for networking - bridge, NAT, tap devices)
+- debootstrap (for building the rootfs)
+- Rust toolchain (only for development installs)
 
 ```bash
 sudo apt install iptables debootstrap zfs-dkms zfsutils-linux
 sudo modprobe kvm kvm_amd zfs # or `kvm_intel`
 ```
 
-## Setup
+## Configuration
 
-Run the setup scripts to build the rootfs, create a ZFS pool, and generate SSH keys:
+All configuration is stored in `$VUME_HOME/vume.toml` (default: `/opt/vume/vume.toml`).
 
-```bash
-# downloads vmlinux image and Firecracker binary
-./scripts/download.sh
-
-# Development (file-backed ZFS pool)
-sudo ./scripts/setup.sh
-
-# Production (real block device)
-sudo ./scripts/setup.sh --pool-disk /dev/nvme1n1
-```
-
-This will:
-1. Build a Debian rootfs via debootstrap (`scripts/rootfs.sh`)
-2. Generate an ed25519 SSH keypair (`vume_key` / `vume_key.pub`)
-3. Install the public key into the rootfs
-4. Create a ZFS pool and zvol
-5. Copy the rootfs into the zvol and snapshot it as `vume/rootfs@base`
-
-The script is idempotent — it skips steps that have already been completed.
-
-To rebuild just the rootfs independently:
-
-```bash
-sudo ./scripts/rootfs.sh [--output rootfs.ext4] [--size 2G] [--arch amd64]
-```
+See `config/vume.toml` for default values.
 
 ## Customizing the rootfs
 

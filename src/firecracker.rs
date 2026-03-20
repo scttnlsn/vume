@@ -9,7 +9,7 @@ use anyhow::{bail, Context, Result};
 use reqwest::blocking::Client;
 use serde_json::json;
 
-use crate::network::BRIDGE_IP;
+use crate::config::get;
 
 pub struct Firecracker {
     socket: PathBuf,
@@ -24,6 +24,7 @@ pub struct Firecracker {
 
 impl Firecracker {
     pub fn new(socket: &Path, kernel: &Path, rootfs: &Path, tap: &str, ip: &str) -> Result<Self> {
+        let cfg = get();
         let socket = if socket.is_absolute() {
             socket.to_path_buf()
         } else {
@@ -42,8 +43,8 @@ impl Firecracker {
             rootfs: rootfs.to_owned(),
             tap: tap.to_owned(),
             ip: ip.to_owned(),
-            vcpu: 2,
-            mem: 1024,
+            vcpu: cfg.vcpu,
+            mem: cfg.mem,
         })
     }
 
@@ -53,8 +54,12 @@ impl Firecracker {
             fs::remove_file(&self.socket)?;
         }
 
-        let fc_path = fs::canonicalize("vume/firecracker")
-            .context("Firecracker binary not found at vume/firecracker")?;
+        let fc_path = fs::canonicalize(&get().firecracker).with_context(|| {
+            format!(
+                "Firecracker binary not found at {}",
+                get().firecracker.display()
+            )
+        })?;
 
         let mut child = Command::new(fc_path)
             .arg("--api-sock")
@@ -88,6 +93,7 @@ impl Firecracker {
     }
 
     pub fn configure(&self) -> Result<()> {
+        let bridge_ip = get().network.bridge_ip();
         self.put(
             "/machine-config",
             &json!({
@@ -102,7 +108,7 @@ impl Firecracker {
                 "kernel_image_path": self.kernel.to_string_lossy(),
                 "boot_args": format!(
                     "console=ttyS0 reboot=k panic=1 pci=off ip={}::{}:255.255.255.0::eth0:off",
-                    self.ip, BRIDGE_IP
+                    self.ip, bridge_ip
                 ),
             }),
         )?;
