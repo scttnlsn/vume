@@ -97,7 +97,7 @@ enum ProcessCommands {
         /// Command to run
         command: String,
         /// Working directory
-        #[arg(long, default_value = "/workspace")]
+        #[arg(long, default_value = "/root")]
         cwd: String,
         /// Disable auto-restart on failure
         #[arg(long)]
@@ -208,6 +208,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     run_in_vm(
                         &vm_id,
                         &[
+                            &format!("mkdir -p {cwd}"),
                             &format!("cat > /etc/systemd/system/vume-{name}.service << 'UNIT'\n{unit}UNIT"),
                             "systemctl daemon-reload",
                             &format!("systemctl enable --now vume-{name}.service"),
