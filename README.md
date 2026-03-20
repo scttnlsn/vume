@@ -7,6 +7,7 @@ Micro-VM pool management via [Firecracker](https://github.com/firecracker-microv
   - [Quick install](#quick-install)
   - [Development](#development)
 - [System requirements](#system-requirements)
+- [Why ZFS?](#why-zfs)
 - [Configuration](#configuration)
 - [CLI Usage](#cli-usage)
   - [Start a VM](#start-a-vm)
@@ -72,6 +73,16 @@ This will build from source via `cargo build --release` instead of downloading t
 sudo apt install iptables debootstrap zfs-dkms zfsutils-linux
 sudo modprobe kvm kvm_amd zfs # or `kvm_intel`
 ```
+
+## Why ZFS?
+
+ZFS is a natural fit for Firecracker VM storage for several reasons:
+
+**Instant clones via Copy-on-Write** — ZFS dataset clones let you spin up a new VM from a base rootfs almost instantly. The clone initially shares all blocks with its parent, so disk space only grows as the VM writes data that differs from the base image.
+
+**Customizable base images** — You can snapshot a customized VM and promote it as the new rootfs version. Future VMs clone from the new version while existing VMs are unaffected.
+
+**ZFS at the filesystem level** — Transparent LZ4 compression reduces storage overhead with negligible CPU cost. Checksummed blocks protect against silent data corruption. Datasets can be streamed via `zfs send`/`zfs receive` for backups, replication, or moving VM storage across hosts.
 
 ## Configuration
 
