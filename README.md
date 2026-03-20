@@ -2,6 +2,22 @@
 
 Micro-VM pool management via [Firecracker](https://github.com/firecracker-microvm/firecracker) and [ZFS](https://github.com/openzfs/zfs)
 
+
+- [Installation](#installation)
+  - [Quick install](#quick-install)
+  - [Development](#development)
+- [System requirements](#system-requirements)
+- [Configuration](#configuration)
+- [CLI Usage](#cli-usage)
+  - [Start a VM](#start-a-vm)
+  - [List VMs](#list-vms)
+  - [Execute a command in a VM](#execute-a-command-in-a-vm)
+  - [Manage background processes](#manage-background-processes)
+  - [Stop / destroy VMs](#stop--destroy-vms)
+  - [View configuration](#view-configuration)
+  - [Help](#help)
+- [Customizing the rootfs](#customizing-the-rootfs)
+
 ## Installation
 
 ### Quick install
