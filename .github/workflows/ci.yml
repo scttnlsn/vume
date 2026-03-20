@@ -10,7 +10,7 @@ env:
 
 jobs:
   ci:
-    name: Build/lint/test
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
