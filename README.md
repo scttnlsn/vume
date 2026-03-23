@@ -1,6 +1,6 @@
 # vume
 
-Micro-VM pool management via [Firecracker](https://github.com/firecracker-microvm/firecracker) and [ZFS](https://github.com/openzfs/zfs)
+Instant microVM provisioning via [Firecracker](https://github.com/firecracker-microvm/firecracker) and [ZFS](https://github.com/openzfs/zfs). Spin up lightweight, isolated VMs with copy-on-write storage and a simple CLI for execution and process management.
 
 
 - [Installation](#installation)
