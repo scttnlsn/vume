@@ -4,7 +4,7 @@ use anyhow::bail;
 use clap::{Parser, Subcommand};
 
 use vume::config;
-use vume::network::NetworkManager;
+use vume::network;
 use vume::ssh::run_in_vm;
 use vume::state::{StateManager, VmStatus};
 use vume::vm::VM;
@@ -279,7 +279,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let state = StateManager::new()?;
             let stale = state.refresh_status()?;
             for item in &stale {
-                NetworkManager::delete_tap(&item.tap);
+                network::delete_tap(&item.tap);
             }
 
             let filter = status.map(|s| s.parse::<VmStatus>()).transpose()?;
@@ -327,10 +327,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 }
             }
             ConfigCommands::Path => {
-                let path = std::env::var("VUME_HOME")
-                    .map(std::path::PathBuf::from)
-                    .unwrap_or_else(|_| std::path::PathBuf::from("/opt/vume"));
-                println!("{}", path.join("vume.toml").display());
+                println!("{}", config::vume_home().join("vume.toml").display());
             }
         },
     }

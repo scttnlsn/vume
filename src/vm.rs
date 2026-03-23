@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::config::get;
 use crate::firecracker::Firecracker;
-use crate::network::NetworkManager;
+use crate::network;
 use crate::state::{StateManager, VMInfo, VmStatus};
 
 #[derive(Debug)]
@@ -106,8 +106,8 @@ impl VM {
 
         // Setup networking
         self.ip = Some(info.ip.clone());
-        NetworkManager::ensure_bridge(cfg.network.outbound_if.as_deref())?;
-        NetworkManager::create_tap(&tap)?;
+        network::ensure_bridge(cfg.network.outbound_if.as_deref())?;
+        network::create_tap(&tap)?;
 
         // Start Firecracker
         let fc = Firecracker::new(&self.socket, &self.kernel, &self.rootfs, &tap, &info.ip)?;
@@ -124,13 +124,17 @@ impl VM {
             kill_process(pid, true);
         }
         if let Some(ref tap) = self.tap {
-            NetworkManager::delete_tap(tap);
+            network::delete_tap(tap);
         }
         if self.resuming {
-            let _ = state.update_status(&self.id, VmStatus::Stopped);
+            if let Err(e) = state.update_status(&self.id, VmStatus::Stopped) {
+                log::warn!("rollback: failed to update status for {}: {e}", self.id);
+            }
             return;
         }
-        let _ = cleanup_vm(&self.id, state);
+        if let Err(e) = cleanup_vm(&self.id, state) {
+            log::warn!("rollback: cleanup failed for {}: {e}", self.id);
+        }
     }
 
     /// Stop a VM by ID. Kills the process and removes the tap device.
@@ -225,7 +229,7 @@ fn teardown(vm: &VMInfo) {
     if let Some(pid) = vm.pid_u32() {
         kill_process(pid, true);
     }
-    NetworkManager::delete_tap(&vm.tap);
+    network::delete_tap(&vm.tap);
 }
 
 fn kill_process(pid: u32, force: bool) {

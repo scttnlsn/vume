@@ -24,7 +24,7 @@ Micro-VM pool management via [Firecracker](https://github.com/firecracker-microv
 ### Quick install
 
 ```bash
-curl -s https://raw.githubusercontent.com/scttnlsn/vume/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/scttnlsn/vume/main/install.sh | bash
 ```
 
 This will:

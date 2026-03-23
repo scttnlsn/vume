@@ -128,13 +128,11 @@ impl StateManager {
                 "INSERT INTO vms (id, pid, ip, tap, status, created_at)
                  VALUES (?1, 0, ?2, ?3, ?4, ?5) RETURNING *",
             )?;
-            let mut rows = stmt.query_map(
+            Self::query_one(
+                &mut stmt,
                 rusqlite::params![vm_id, ip, tap, VmStatus::Booting.as_str(), created_at],
-                VMInfo::from_row,
-            )?;
-            rows.next()
-                .context("No row returned from INSERT")?
-                .context("Failed to read inserted row")
+                "No row returned from INSERT",
+            )
         })
     }
 
@@ -145,13 +143,11 @@ impl StateManager {
                 "UPDATE vms SET pid = 0, ip = ?1, tap = ?2, status = ?3
                  WHERE id = ?4 RETURNING *",
             )?;
-            let mut rows = stmt.query_map(
+            Self::query_one(
+                &mut stmt,
                 rusqlite::params![ip, tap, VmStatus::Booting.as_str(), vm_id],
-                VMInfo::from_row,
-            )?;
-            rows.next()
-                .context("VM not found")?
-                .context("Failed to read updated row")
+                "VM not found",
+            )
         })
     }
 
@@ -159,13 +155,11 @@ impl StateManager {
         let mut stmt = self
             .conn
             .prepare("UPDATE vms SET status = ?1, pid = ?2 WHERE id = ?3 RETURNING *")?;
-        let mut rows = stmt.query_map(
+        Self::query_one(
+            &mut stmt,
             rusqlite::params![VmStatus::Running.as_str(), pid, vm_id],
-            VMInfo::from_row,
-        )?;
-        rows.next()
-            .context("VM not found")?
-            .context("Failed to read updated row")
+            "VM not found",
+        )
     }
 
     pub fn get_vm(&self, vm_id: &str) -> Result<Option<VMInfo>> {
@@ -190,11 +184,11 @@ impl StateManager {
         let mut stmt = self
             .conn
             .prepare("UPDATE vms SET status = ?1 WHERE id = ?2 RETURNING *")?;
-        let mut rows =
-            stmt.query_map(rusqlite::params![status.as_str(), vm_id], VMInfo::from_row)?;
-        rows.next()
-            .context("VM not found")?
-            .context("Failed to read updated row")
+        Self::query_one(
+            &mut stmt,
+            rusqlite::params![status.as_str(), vm_id],
+            "VM not found",
+        )
     }
 
     pub fn delete_vm(&self, vm_id: &str) -> Result<()> {
@@ -206,16 +200,26 @@ impl StateManager {
     pub fn refresh_status(&self) -> Result<Vec<VMInfo>> {
         let mut stale = Vec::new();
 
-        for info in self.list_vms(Some(VmStatus::Running))? {
-            if !info.pid_u32().is_some_and(pid_alive) {
-                stale.push(self.update_status(&info.id, VmStatus::Error)?);
+        for status in [VmStatus::Running, VmStatus::Booting] {
+            for info in self.list_vms(Some(status))? {
+                if !info.pid_u32().is_some_and(pid_alive) {
+                    stale.push(self.update_status(&info.id, VmStatus::Error)?);
+                }
             }
-        }
-        for info in self.list_vms(Some(VmStatus::Booting))? {
-            stale.push(self.update_status(&info.id, VmStatus::Error)?);
         }
 
         Ok(stale)
+    }
+
+    fn query_one(
+        stmt: &mut rusqlite::Statement,
+        params: impl rusqlite::Params,
+        not_found_msg: &'static str,
+    ) -> Result<VMInfo> {
+        let mut rows = stmt.query_map(params, VMInfo::from_row)?;
+        rows.next()
+            .context(not_found_msg)?
+            .context("Failed to read row")
     }
 
     fn exclusive<T>(&self, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
@@ -250,7 +254,7 @@ fn allocate_ip(conn: &Connection) -> Result<String> {
 
     get()
         .network
-        .allocate_ip(&used.into_iter().collect::<Vec<_>>())
+        .allocate_ip(&used)
         .ok_or_else(|| anyhow::anyhow!("No available IPs in pool"))
 }
 

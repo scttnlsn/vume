@@ -6,50 +6,46 @@ use log::{info, warn};
 
 use crate::config::get;
 
-pub struct NetworkManager;
+pub fn ensure_bridge(outbound_if: Option<&str>) -> Result<()> {
+    let cfg = get();
+    let bridge = &cfg.network.bridge;
+    let bridge_ip = cfg.network.bridge_ip();
+    let subnet = &cfg.network.subnet;
 
-impl NetworkManager {
-    pub fn ensure_bridge(outbound_if: Option<&str>) -> Result<()> {
-        let cfg = get();
-        let bridge = &cfg.network.bridge;
-        let bridge_ip = cfg.network.bridge_ip();
-        let subnet = &cfg.network.subnet;
-
-        if bridge_exists(bridge) {
-            return Ok(());
-        }
-
-        info!("Creating bridge {bridge} ({bridge_ip}/24)...");
-
-        run("ip", &["link", "add", bridge, "type", "bridge"])?;
-        run(
-            "ip",
-            &["addr", "add", &format!("{bridge_ip}/24"), "dev", bridge],
-        )?;
-        run("ip", &["link", "set", bridge, "up"])?;
-
-        fs::write("/proc/sys/net/ipv4/ip_forward", "1\n")?;
-
-        let outbound = outbound_if
-            .map(str::to_string)
-            .unwrap_or_else(detect_default_interface);
-        setup_nat(bridge, subnet, &outbound)
+    if bridge_exists(bridge) {
+        return Ok(());
     }
 
-    pub fn create_tap(tap_name: &str) -> Result<()> {
-        let bridge = &get().network.bridge;
-        info!("Creating tap device {tap_name}...");
-        run("ip", &["tuntap", "add", "dev", tap_name, "mode", "tap"])?;
-        run("ip", &["link", "set", tap_name, "master", bridge])?;
-        run("ip", &["link", "set", tap_name, "up"])
-    }
+    info!("Creating bridge {bridge} ({bridge_ip}/24)...");
 
-    pub fn delete_tap(tap_name: &str) {
-        if let Err(e) = Command::new("ip").args(["link", "del", tap_name]).output() {
-            warn!("Failed to remove tap device {tap_name}: {e}");
-        } else {
-            info!("Removed tap device {tap_name}");
-        }
+    run("ip", &["link", "add", bridge, "type", "bridge"])?;
+    run(
+        "ip",
+        &["addr", "add", &format!("{bridge_ip}/24"), "dev", bridge],
+    )?;
+    run("ip", &["link", "set", bridge, "up"])?;
+
+    fs::write("/proc/sys/net/ipv4/ip_forward", "1\n")?;
+
+    let outbound = outbound_if
+        .map(str::to_string)
+        .unwrap_or_else(detect_default_interface);
+    setup_nat(bridge, subnet, &outbound)
+}
+
+pub fn create_tap(tap_name: &str) -> Result<()> {
+    let bridge = &get().network.bridge;
+    info!("Creating tap device {tap_name}...");
+    run("ip", &["tuntap", "add", "dev", tap_name, "mode", "tap"])?;
+    run("ip", &["link", "set", tap_name, "master", bridge])?;
+    run("ip", &["link", "set", tap_name, "up"])
+}
+
+pub fn delete_tap(tap_name: &str) {
+    if let Err(e) = Command::new("ip").args(["link", "del", tap_name]).output() {
+        warn!("Failed to remove tap device {tap_name}: {e}");
+    } else {
+        info!("Removed tap device {tap_name}");
     }
 }
 

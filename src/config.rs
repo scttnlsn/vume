@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -61,7 +62,7 @@ impl NetworkConfig {
         format!("{}.0/24", self.subnet)
     }
 
-    pub fn allocate_ip(&self, used: &[String]) -> Option<String> {
+    pub fn allocate_ip(&self, used: &HashSet<String>) -> Option<String> {
         for i in IP_RANGE_START..=IP_RANGE_END {
             let candidate = format!("{}.{}", self.subnet, i);
             if !used.contains(&candidate) {
@@ -72,7 +73,7 @@ impl NetworkConfig {
     }
 }
 
-fn vume_home() -> PathBuf {
+pub fn vume_home() -> PathBuf {
     std::env::var("VUME_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(DEFAULT_VUME_HOME))
@@ -93,7 +94,7 @@ struct RawConfig {
     network: Option<RawNetworkConfig>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Default, serde::Deserialize)]
 struct RawNetworkConfig {
     bridge: Option<String>,
     subnet: Option<String>,
@@ -129,18 +130,12 @@ impl Config {
         let vcpu = raw.vcpu.unwrap_or(DEFAULT_VCPU);
         let mem = raw.mem.unwrap_or(DEFAULT_MEM);
 
-        let network = raw
-            .network
-            .map(|n| NetworkConfig {
-                bridge: n.bridge.unwrap_or_else(|| DEFAULT_BRIDGE.to_string()),
-                subnet: n.subnet.unwrap_or_else(|| DEFAULT_SUBNET.to_string()),
-                outbound_if: n.outbound_if,
-            })
-            .unwrap_or_else(|| NetworkConfig {
-                bridge: DEFAULT_BRIDGE.to_string(),
-                subnet: DEFAULT_SUBNET.to_string(),
-                outbound_if: None,
-            });
+        let raw_net = raw.network.unwrap_or_default();
+        let network = NetworkConfig {
+            bridge: raw_net.bridge.unwrap_or_else(|| DEFAULT_BRIDGE.to_string()),
+            subnet: raw_net.subnet.unwrap_or_else(|| DEFAULT_SUBNET.to_string()),
+            outbound_if: raw_net.outbound_if,
+        };
 
         Ok(Config {
             home,
@@ -216,14 +211,18 @@ mod tests {
             outbound_if: None,
         };
 
-        assert_eq!(nc.allocate_ip(&[]).unwrap(), "172.16.0.2");
+        assert_eq!(nc.allocate_ip(&HashSet::new()).unwrap(), "172.16.0.2");
         assert_eq!(
-            nc.allocate_ip(&["172.16.0.2".to_string()]).unwrap(),
+            nc.allocate_ip(&HashSet::from(["172.16.0.2".to_string()]))
+                .unwrap(),
             "172.16.0.3"
         );
         assert_eq!(
-            nc.allocate_ip(&["172.16.0.2".to_string(), "172.16.0.3".to_string()])
-                .unwrap(),
+            nc.allocate_ip(&HashSet::from([
+                "172.16.0.2".to_string(),
+                "172.16.0.3".to_string()
+            ]))
+            .unwrap(),
             "172.16.0.4"
         );
     }
