@@ -52,7 +52,7 @@ export VUME_HOME=/your/path
 If you have a local checkout of this repo:
 
 ```bash
-./install.sh --instal-path ./vume
+./install.sh
 # or with a custom install path:
 ./install.sh --install-path ./vume
 # or with a custom ZFS pool device:
