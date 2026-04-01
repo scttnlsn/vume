@@ -1,11 +1,12 @@
 use std::io::{self, Write};
+use std::process::Command;
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
 
 use vume::config;
 use vume::network;
-use vume::ssh::run_in_vm;
+use vume::ssh::{run_in_vm, wait_for_ready};
 use vume::state::{StateManager, VmStatus};
 use vume::vm::VM;
 
@@ -46,6 +47,20 @@ enum Commands {
         /// Skip waiting for SSH to be ready
         #[arg(long)]
         no_wait: bool,
+    },
+
+    /// Open an interactive SSH session to a VM
+    Ssh {
+        /// VM ID
+        id: String,
+
+        /// Skip waiting for SSH to be ready
+        #[arg(long)]
+        no_wait: bool,
+
+        /// Enable SSH agent forwarding
+        #[arg(short = 'A', long)]
+        forward: bool,
     },
 
     /// Manage background processes in a VM
@@ -177,6 +192,46 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 eprint!("{}", result.stderr);
             }
             std::process::exit(result.exit_code);
+        }
+
+        Commands::Ssh {
+            id,
+            no_wait,
+            forward,
+        } => {
+            let state = StateManager::new()?;
+            let vm = state
+                .get_vm(&id)?
+                .with_context(|| format!("VM {id} not found"))?;
+
+            if vm.status != VmStatus::Running {
+                bail!("VM {id} is not running (status: {})", vm.status);
+            }
+
+            if !no_wait && !wait_for_ready(&vm.ip, 30) {
+                bail!("SSH not ready on {}", vm.ip);
+            }
+
+            let mut args = vec![
+                "-i".to_string(),
+                config::get().ssh_key.to_string_lossy().to_string(),
+                "-o".to_string(),
+                "StrictHostKeyChecking=no".to_string(),
+                "-o".to_string(),
+                "UserKnownHostsFile=/dev/null".to_string(),
+                format!("root@{}", vm.ip),
+            ];
+
+            if forward {
+                args.insert(0, "-A".to_string());
+            }
+
+            let status = Command::new("ssh")
+                .args(&args)
+                .status()
+                .context("Failed to run ssh")?;
+
+            std::process::exit(status.code().unwrap_or(1));
         }
 
         Commands::Process { command } => {

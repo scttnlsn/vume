@@ -117,6 +117,20 @@ sudo vume exec my-vm "uname -a"
 sudo vume exec my-vm "apt install -y python3" --timeout 120
 ```
 
+### Open an interactive SSH session
+
+```bash
+sudo vume ssh my-vm
+```
+
+This opens an interactive shell session to the VM using the configured SSH key.
+
+To enable SSH agent forwarding (useful for git clone or ssh to other hosts from within the VM):
+
+```bash
+sudo SSH_AUTH_SOCK="$SSH_AUTH_SOCK" vume ssh -A my-vm
+```
+
 ### Manage background processes
 
 ```bash
