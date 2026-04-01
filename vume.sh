@@ -18,8 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 POOL_DEVICE=""
 ROOTFS_PATH=""
-ROOTFS_SIZE="2G"
-ZVOL_SIZE="2G"
+ROOTFS_SIZE="10G"
+ZVOL_SIZE="10G"
 SSH_KEY=""
 POOL_NAME=""
 
@@ -163,7 +163,7 @@ cmd_setup() {
     else
         echo ":: creating snapshot '${POOL_NAME}/rootfs@base'"
         zfs snapshot "${POOL_NAME}/rootfs@base"
-        zfs set vume:latest=base "${POOL_NAME}/rootfs"
+        zfs set vume:base=${POOL_NAME}/rootfs@base "${POOL_NAME}"
     fi
 
     echo ""

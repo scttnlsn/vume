@@ -161,14 +161,7 @@ impl VM {
 fn resolve_rootfs_snapshot() -> Result<String> {
     let pool = &get().zfs_pool;
     let output = Command::new("zfs")
-        .args([
-            "get",
-            "-H",
-            "-o",
-            "value",
-            "vume:latest",
-            &format!("{}/rootfs", pool),
-        ])
+        .args(["get", "-H", "-o", "value", "vume:base", pool])
         .output()
         .context("Failed to run zfs get")?;
 
@@ -176,11 +169,11 @@ fn resolve_rootfs_snapshot() -> Result<String> {
         bail!("zfs get failed");
     }
 
-    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if version.is_empty() || version == "-" {
-        bail!("vume:latest property not set on {}/rootfs", pool);
+    let snapshot = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if snapshot.is_empty() || snapshot == "-" {
+        bail!("vume:base property not set on {}", pool);
     }
-    Ok(format!("{}/rootfs@{}", pool, version))
+    Ok(snapshot)
 }
 
 /// Remove a VM's filesystem, ZFS dataset, and state record.

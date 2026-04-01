@@ -151,20 +151,18 @@ vume <command> --help
 
 ## Customizing the rootfs
 
-You can create a custom base image from a running VM. The active rootfs version is tracked
-via the `vume:latest` ZFS user property on `vume/rootfs`, so you can create new versions without
-affecting existing VMs.
+You can create a custom base image from a running VM. The active rootfs snapshot is tracked
+via the `vume:base` ZFS user property on the pool, which stores the full snapshot path.
 
 ```bash
 # 1. Customize a running VM, e.g.
 sudo vume exec <vm-id> "apt install -y python3 nginx"
 
-# 2. Snapshot the customized VM and create a new rootfs version
+# 2. Snapshot the customized VM
 sudo zfs snapshot vume/<vm-id>@<version>
-sudo zfs send vume/<vm-id>@<version> | sudo zfs receive vume/rootfs@<version>
 
-# 3. Point to the new version
-sudo zfs set vume:latest=<version> vume/rootfs
+# 3. Point to the new snapshot
+sudo zfs set vume:base=vume/<vm-id>@<version> vume
 ```
 
-All future VMs will clone from the new version. Existing VMs are unaffected.
+All future VMs will clone from the new snapshot. Existing VMs are unaffected.
